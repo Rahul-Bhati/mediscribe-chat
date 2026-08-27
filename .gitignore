@@ -1,0 +1,32 @@
+# Secrets. A leaked GROQ_API_KEY on a public repo is the one unrecoverable
+# mistake here, so this is deliberately broad.
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+node_modules/
+
+# Expo / Metro
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+.metro-health-check*
+
+# Native build output
+/ios
+/android
+*.jks
+*.p8
+*.p12
+*.mobileprovision
+
+# Logs and OS cruft
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+.DS_Store
+*.tsbuildinfo

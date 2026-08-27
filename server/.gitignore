@@ -1,0 +1,9 @@
+node_modules/
+
+# A leaked GROQ_API_KEY on a public repo is the one unrecoverable mistake here.
+.env
+.env.*
+!.env.example
+
+*.log
+.DS_Store
