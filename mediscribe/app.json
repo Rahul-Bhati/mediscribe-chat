@@ -1,0 +1,56 @@
+{
+  "expo": {
+    "name": "MediScribe",
+    "slug": "mediscribe",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "MediScribe records the visit conversation so it can draft a clinical note. Audio is never stored."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+      ],
+      "predictiveBackGestureEnabled": false,
+      "package": "com.rahulbhatigfc.mediscribe"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "MediScribe records the visit conversation so it can draft a clinical note. Audio is never stored."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "MediScribe reads a lab report photo you choose so it can explain it in plain English.",
+          "cameraPermission": "MediScribe uses the camera to photograph a lab report so it can explain it in plain English."
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "b2b8d125-9a0c-4a0f-8bce-35cebd752e34"
+      }
+    }
+  }
+}
