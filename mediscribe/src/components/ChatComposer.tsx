@@ -15,6 +15,7 @@ type Props = {
   /** True while a recording is being transcribed and written up. */
   isBusy?: boolean;
   elapsedMs: number;
+  recordingHint?: string;
 };
 
 /**
@@ -32,6 +33,7 @@ export function ChatComposer({
   isRecording,
   isBusy = false,
   elapsedMs,
+  recordingHint,
 }: Props) {
   const insets = useSafeAreaInsets();
   const hasText = text.trim().length > 0;
@@ -69,7 +71,7 @@ export function ChatComposer({
         </Pressable>
 
         {isRecording ? (
-          <RecordingIndicator elapsedMs={elapsedMs} />
+          <RecordingIndicator elapsedMs={elapsedMs} hint={recordingHint} />
         ) : (
           <TextInput
             style={styles.input}

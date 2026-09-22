@@ -9,12 +9,13 @@ import { AttachmentBubble } from '../components/AttachmentBubble';
 import { ChatComposer } from '../components/ChatComposer';
 import { LabReportBubble } from '../components/LabReportBubble';
 import { PipelineIndicator, type PipelineStage } from '../components/PipelineIndicator';
+import { PrepBriefBubble } from '../components/PrepBriefBubble';
 import { SoapNoteBubble } from '../components/SoapNoteBubble';
 import { SuggestionPills, type Suggestion } from '../components/SuggestionPills';
 import { UserMessage } from '../components/UserMessage';
 import { VoiceNoteBubble } from '../components/VoiceNoteBubble';
 import { useVoiceRecorder, type RecordingResult } from '../hooks/useVoiceRecorder';
-import { processDocument, processVoice } from '../lib/api';
+import { processDocument, processPrep, processVoice } from '../lib/api';
 import { discardCachedFile } from '../lib/files';
 import { nextMessageId } from '../lib/format';
 import { pickLabReport, type PickSource } from '../lib/pickLabReport';
@@ -32,7 +33,7 @@ const STAGE_HANDOVER_MS = 2_500;
 
 const WELCOME_MESSAGE: ChatMessage = {
   _id: WELCOME_ID,
-  text: 'Catch up before your next encounter. Record the visit and I will write the note, with every line linked back to what was said.',
+  text: 'Catch up before your next encounter. Record the visit and I will write the note, a plain-language summary, and a to-do list. Every line links back to what was said.',
   createdAt: new Date(),
   user: ASSISTANT,
 };
@@ -44,6 +45,8 @@ export function ChatScreen() {
   const { showActionSheetWithOptions } = useActionSheet();
 
   const stageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const recordingModeRef = useRef<'visit' | 'prep'>('visit');
+  const [recordingMode, setRecordingMode] = useState<'visit' | 'prep'>('visit');
 
   useEffect(
     () => () => {
@@ -70,6 +73,10 @@ export function ChatScreen() {
 
   const handleRecordingFinished = useCallback(
     async (recording: RecordingResult) => {
+      const mode = recordingModeRef.current;
+      recordingModeRef.current = 'visit';
+      setRecordingMode('visit');
+
       append({
         _id: nextMessageId(),
         text: '',
@@ -79,24 +86,40 @@ export function ChatScreen() {
       });
 
       setStage('transcribing');
-      stageTimerRef.current = setTimeout(() => setStage('writing'), STAGE_HANDOVER_MS);
+      stageTimerRef.current = setTimeout(
+        () => setStage(mode === 'prep' ? 'briefing' : 'writing'),
+        STAGE_HANDOVER_MS
+      );
 
-      const result = await processVoice(recording.uri);
+      const finishStage = () => {
+        if (stageTimerRef.current !== null) {
+          clearTimeout(stageTimerRef.current);
+          stageTimerRef.current = null;
+        }
+        setStage(null);
+      };
+
       // The note and transcript live in memory from here; the audio does not
       // need to outlive the request (PRD §7.5).
-      discardCachedFile(recording.uri);
-
-      if (stageTimerRef.current !== null) {
-        clearTimeout(stageTimerRef.current);
-        stageTimerRef.current = null;
+      if (mode === 'prep') {
+        const result = await processPrep(recording.uri);
+        discardCachedFile(recording.uri);
+        finishStage();
+        if (result.ok) {
+          appendAssistant({ text: 'Here is the brief to hand over.', prepNote: result.data });
+        } else {
+          appendAssistant({ text: result.error, isError: true });
+        }
+        return;
       }
-      setStage(null);
 
+      const result = await processVoice(recording.uri);
+      discardCachedFile(recording.uri);
+      finishStage();
       if (result.ok) {
         appendAssistant({ text: 'Here is the note from that visit.', visitNote: result.data });
         return;
       }
-
       appendAssistant({ text: result.error, isError: true });
     },
     [append, appendAssistant]
@@ -122,6 +145,24 @@ export function ChatScreen() {
     onError: handleRecordingError,
     onPermissionDenied: handlePermissionDenied,
   });
+
+  const startRecording = useCallback(
+    (mode: 'visit' | 'prep') => {
+      if (isRecording || stage !== null) return;
+      recordingModeRef.current = mode;
+      setRecordingMode(mode);
+      toggle();
+    },
+    [isRecording, stage, toggle]
+  );
+
+  const handleMic = useCallback(() => {
+    if (!isRecording) {
+      recordingModeRef.current = 'visit';
+      setRecordingMode('visit');
+    }
+    toggle();
+  }, [isRecording, toggle]);
 
   const handleSend = useCallback(() => {
     const trimmed = text.trim();
@@ -190,10 +231,11 @@ export function ChatScreen() {
 
   const suggestions = useMemo<Suggestion[]>(
     () => [
-      { label: 'Record a visit', onPress: toggle },
+      { label: 'Record a visit', onPress: () => startRecording('visit') },
+      { label: 'Prepare for a visit', onPress: () => startRecording('prep') },
       { label: 'Explain a lab report', onPress: handleAttach },
     ],
-    [handleAttach, toggle]
+    [handleAttach, startRecording]
   );
 
   /**
@@ -215,6 +257,7 @@ export function ChatScreen() {
         <>
           <AssistantMessage text={message.text} isError={message.isError} />
           {message.visitNote ? <SoapNoteBubble note={message.visitNote} /> : null}
+          {message.prepNote ? <PrepBriefBubble note={message.prepNote} /> : null}
           {message.labReport ? <LabReportBubble report={message.labReport} /> : null}
           {message._id === WELCOME_ID && !isRecording ? (
             <SuggestionPills title="Try this" suggestions={suggestions} />
@@ -248,10 +291,11 @@ export function ChatScreen() {
             onChangeText={setText}
             onSend={handleSend}
             onAttach={handleAttach}
-            onToggleRecording={toggle}
+            onToggleRecording={handleMic}
             isRecording={isRecording}
             isBusy={stage !== null}
             elapsedMs={elapsedMs}
+            recordingHint={recordingMode === 'prep' ? 'Preparing' : 'Listening'}
           />
         )}
       />

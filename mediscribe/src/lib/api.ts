@@ -3,10 +3,16 @@ import { Platform } from 'react-native';
 
 import { API_BASE_URL, REQUEST_TIMEOUT_MS } from '../config';
 import {
+  CHECKLIST_KINDS,
   SOAP_SECTIONS,
+  type ChecklistItem,
+  type ChecklistKind,
+  type CitedLine,
   type LabParameter,
   type LabReport,
   type LabStatus,
+  type PrepBrief,
+  type PrepNote,
   type SoapNote,
   type VisitNote,
 } from '../types';
@@ -146,7 +152,79 @@ function readVisitNote(data: unknown): VisitNote | null {
     soap_note[section] = Array.isArray(bullets) ? bullets : [];
   }
 
-  return { soap_note, segments };
+  const record = data as Record<string, unknown>;
+  return {
+    soap_note,
+    segments,
+    patient_summary: readCitedLines(record.patient_summary, 6),
+    checklist: readChecklist(record.checklist),
+  };
+}
+
+function readIdList(raw: unknown): number[] {
+  if (!Array.isArray(raw)) return [];
+  const ids: number[] = [];
+  for (const value of raw) {
+    const id = typeof value === 'string' ? Number(value) : value;
+    if (typeof id === 'number' && Number.isInteger(id) && !ids.includes(id)) ids.push(id);
+  }
+  return ids;
+}
+
+function readCitedLine(raw: unknown): CitedLine | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const entry = raw as Record<string, unknown>;
+  const text = typeof entry.text === 'string' ? entry.text.trim() : '';
+  const source_segment_ids = readIdList(entry.source_segment_ids);
+  if (!text || source_segment_ids.length === 0) return null;
+  return { text, source_segment_ids };
+}
+
+function readCitedLines(raw: unknown, cap: number): CitedLine[] {
+  if (!Array.isArray(raw)) return [];
+  const lines: CitedLine[] = [];
+  for (const entry of raw) {
+    const line = readCitedLine(entry);
+    if (!line) continue;
+    lines.push(line);
+    if (lines.length >= cap) break;
+  }
+  return lines;
+}
+
+function readChecklist(raw: unknown): ChecklistItem[] {
+  if (!Array.isArray(raw)) return [];
+  const items: ChecklistItem[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') continue;
+    const record = entry as Record<string, unknown>;
+    const line = readCitedLine(record);
+    const kind = record.kind as ChecklistKind;
+    const plan_bullet_index =
+      typeof record.plan_bullet_index === 'number' ? record.plan_bullet_index : -1;
+    if (!line || !CHECKLIST_KINDS.includes(kind) || !Number.isInteger(plan_bullet_index)) continue;
+    items.push({ ...line, kind, plan_bullet_index });
+    if (items.length >= 8) break;
+  }
+  return items;
+}
+
+function readPrepNote(data: unknown): PrepNote | null {
+  if (!data || typeof data !== 'object') return null;
+  const record = data as Record<string, unknown>;
+  if (!record.brief || typeof record.brief !== 'object' || !Array.isArray(record.segments)) return null;
+
+  const brief = record.brief as Record<string, unknown>;
+  const parsed: PrepBrief = {
+    reason: readCitedLine(brief.reason),
+    symptoms: readCitedLines(brief.symptoms, 6),
+    medicines: readCitedLines(brief.medicines, 8),
+    questions: readCitedLines(brief.questions, 6),
+  };
+  if (!parsed.reason && parsed.symptoms.length === 0 && parsed.medicines.length === 0 && parsed.questions.length === 0) {
+    return null;
+  }
+  return { brief: parsed, segments: record.segments };
 }
 
 /** Same, for the lab report. A malformed row is dropped, never guessed at. */
@@ -201,6 +279,18 @@ export function processVoice(uri: string): Promise<ApiResult<VisitNote>> {
     uri,
     fallbackName: 'recording.m4a',
     read: readVisitNote,
+    genericError: 'The server could not process that recording.',
+  });
+}
+
+/** Uploads a pre-visit recording and returns the one-page brief. */
+export function processPrep(uri: string): Promise<ApiResult<PrepNote>> {
+  return postFile({
+    path: '/api/process-prep',
+    field: 'audio',
+    uri,
+    fallbackName: 'recording.m4a',
+    read: readPrepNote,
     genericError: 'The server could not process that recording.',
   });
 }

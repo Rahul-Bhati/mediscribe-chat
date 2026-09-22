@@ -33,6 +33,8 @@ export function SoapNoteBubble({ note }: Props) {
   const offsets = useRef<Record<number, number>>({});
 
   const sections = SOAP_SECTIONS.filter((section) => note.soap_note[section].length > 0);
+  const summary = note.patient_summary ?? [];
+  const checklist = note.checklist ?? [];
 
   const handleBulletPress = useCallback(
     (key: string, ids: number[]) => {
@@ -100,6 +102,47 @@ export function SoapNoteBubble({ note }: Props) {
         </View>
       ))}
 
+      <View style={styles.section}>
+        <Text style={styles.sectionLabel}>IN PLAIN ENGLISH</Text>
+        {summary.length > 0 ? (
+          summary.map((bullet, index) => {
+            const key = `summary-${index}`;
+            return (
+              <EvidenceLine
+                key={key}
+                active={activeKey === key}
+                text={bullet.text}
+                ids={bullet.source_segment_ids}
+                onPress={() => handleBulletPress(key, bullet.source_segment_ids)}
+              />
+            );
+          })
+        ) : (
+          <Text style={styles.emptyLine}>No plain-language summary could be written.</Text>
+        )}
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionLabel}>TO DO</Text>
+        {checklist.length > 0 ? (
+          checklist.map((item, index) => {
+            const key = `check-${index}`;
+            return (
+              <EvidenceLine
+                key={key}
+                active={activeKey === key}
+                text={item.text}
+                prefix="The doctor said: "
+                ids={item.source_segment_ids}
+                onPress={() => handleBulletPress(key, item.source_segment_ids)}
+              />
+            );
+          })
+        ) : (
+          <Text style={styles.emptyLine}>No medicine, test, or follow-up was stated.</Text>
+        )}
+      </View>
+
       <View style={styles.divider} />
 
       <View style={styles.transcriptHeader}>
@@ -137,6 +180,40 @@ export function SoapNoteBubble({ note }: Props) {
         })}
       </ScrollView>
     </View>
+  );
+}
+
+function EvidenceLine({
+  active,
+  text,
+  prefix,
+  ids,
+  onPress,
+}: {
+  active: boolean;
+  text: string;
+  prefix?: string;
+  ids: number[];
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      accessibilityLabel={`${prefix ?? ''}${text}. Tap to ${active ? 'hide' : 'show'} its source in the transcript.`}
+      style={({ pressed }) => [styles.bullet, active && styles.bulletActive, pressed && styles.bulletPressed]}
+    >
+      <Text style={[styles.bulletMark, active && styles.bulletMarkActive]}>•</Text>
+      <Text style={styles.bulletText}>
+        {prefix ? <Text style={styles.prefix}>{prefix}</Text> : null}
+        {text}
+        <Text style={[styles.evidence, active && styles.evidenceActive]}>
+          {'  '}
+          {ids.map((id) => `[${id}]`).join(' ')}
+        </Text>
+      </Text>
+    </Pressable>
   );
 }
 
@@ -183,6 +260,14 @@ const styles = StyleSheet.create({
     ...type.body,
     flex: 1,
     color: colors.text,
+  },
+  prefix: {
+    fontWeight: '600',
+  },
+  emptyLine: {
+    ...type.body,
+    color: colors.textMuted,
+    marginTop: spacing.xs,
   },
   evidence: {
     ...type.small,

@@ -26,6 +26,21 @@ export type SoapBullet = {
   source_segment_ids: number[];
 };
 
+/** A plain-language line. Same evidence rule as a SOAP bullet. */
+export type CitedLine = {
+  text: string;
+  source_segment_ids: number[];
+};
+
+export const CHECKLIST_KINDS = ['medicine', 'test', 'follow_up'] as const;
+export type ChecklistKind = (typeof CHECKLIST_KINDS)[number];
+
+/** A task copied from the plan. The bubble prefixes "The doctor said:". */
+export type ChecklistItem = CitedLine & {
+  kind: ChecklistKind;
+  plan_bullet_index: number;
+};
+
 export type SoapNote = Record<SoapSection, SoapBullet[]>;
 
 export type TranscriptSegment = {
@@ -38,6 +53,21 @@ export type TranscriptSegment = {
 /** The payload of `POST /api/process-voice`, note plus the transcript it came from. */
 export type VisitNote = {
   soap_note: SoapNote;
+  patient_summary: CitedLine[];
+  checklist: ChecklistItem[];
+  segments: TranscriptSegment[];
+};
+
+/** The payload of `POST /api/process-prep`. Not a SOAP note. */
+export type PrepBrief = {
+  reason: CitedLine | null;
+  symptoms: CitedLine[];
+  medicines: CitedLine[];
+  questions: CitedLine[];
+};
+
+export type PrepNote = {
+  brief: PrepBrief;
   segments: TranscriptSegment[];
 };
 
@@ -74,6 +104,7 @@ export type Attachment = {
 export interface ChatMessage extends IMessage {
   voiceNote?: VoiceNote;
   visitNote?: VisitNote;
+  prepNote?: PrepNote;
   attachment?: Attachment;
   labReport?: LabReport;
   isError?: boolean;

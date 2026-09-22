@@ -9,10 +9,12 @@ const WARN_REMAINING_MS = 15_000;
 
 type Props = {
   elapsedMs: number;
+  /** Shown while recording. A prep take says "Preparing" so it is not a visit. */
+  hint?: string;
 };
 
 /** Pulsing dot, elapsed timer, and a countdown warning near the 2-minute cap. */
-export function RecordingIndicator({ elapsedMs }: Props) {
+export function RecordingIndicator({ elapsedMs, hint = 'Listening' }: Props) {
   const pulse = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
@@ -46,7 +48,7 @@ export function RecordingIndicator({ elapsedMs }: Props) {
       <Text style={styles.hint} numberOfLines={1}>
         {isNearLimit
           ? `Stopping in ${Math.max(0, Math.ceil(remainingMs / 1000))}s`
-          : 'Listening'}
+          : hint}
       </Text>
     </View>
   );

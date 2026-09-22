@@ -11,6 +11,7 @@ if (!process.env.GROQ_API_KEY) {
 }
 
 const voiceRoutes = require('./routes/voice');
+const prepRoutes = require('./routes/prep');
 const documentRoutes = require('./routes/document');
 const { STT_MODEL, TEXT_MODEL, VISION_MODEL } = require('./lib/groq');
 
@@ -31,6 +32,7 @@ app.get('/health', (req, res) => {
 });
 
 app.use('/api', voiceRoutes);
+app.use('/api', prepRoutes);
 app.use('/api', documentRoutes);
 
 app.use((req, res) => {

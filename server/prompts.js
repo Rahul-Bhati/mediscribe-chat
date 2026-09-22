@@ -33,6 +33,26 @@ CRITICAL INSTRUCTIONS:
 7. Each id in "source_segment_ids" MUST be a separate quoted string, for
    example ["1", "4", "7"]. Never merge ids into a single value such as
    ["147"], and never emit them as bare numbers.
+8. Also return "patient_summary" and "checklist" beside "soap_note".
+9. patient_summary is at most 6 bullets in plain English. Restate symptoms
+   and spoken numbers that are not tasks (how long, where it hurts, a blood
+   pressure that was said aloud). Do not restate a medicine, a test, a
+   referral, or a follow-up time. Those belong only in checklist. Do not
+   write "you have" or "you should". You may write "The doctor said this
+   could be angina."
+10. checklist contains only tasks the plan already states. "kind" is exactly
+    "medicine", "test", or "follow_up". "text" is the instruction itself,
+    without a "The doctor said" prefix. "plan_bullet_index" is the 0-based
+    index of the plan bullet it comes from. Its source_segment_ids must be a
+    subset of that plan bullet's ids.
+11. One plan bullet may produce several checklist items when it names more
+    than one drug, test, or follow-up. Copy every dose, count, and time
+    phrase from the cited words, including "6.25", "twice a day", "this
+    week", "two weeks", and "before that appointment". Do not invent a drug
+    name or a time the transcript did not say. If the words give no dose,
+    do not add one.
+12. "Come back if it gets worse" is follow_up. If the plan states no
+    medicine, test, or follow-up, return "checklist": [].
 
 EXPECTED JSON SCHEMA:
 {
@@ -53,7 +73,17 @@ EXPECTED JSON SCHEMA:
       { "text": "Next steps, medications, tests, referrals, follow-up.",
         "source_segment_ids": ["11"] }
     ]
-  }
+  },
+  "patient_summary": [
+    { "text": "Your chest has felt tight for about three days.",
+      "source_segment_ids": ["1"] }
+  ],
+  "checklist": [
+    { "kind": "medicine",
+      "text": "keep carvedilol 6.25 mg twice a day",
+      "plan_bullet_index": 0,
+      "source_segment_ids": ["11"] }
+  ]
 }`;
 
 // PRD Appendix B. The safety rules are the point of this prompt, not the
@@ -96,4 +126,45 @@ EXPECTED JSON SCHEMA:
   "disclaimer": "This is an automated explanation, not medical advice. Discuss these results with your doctor."
 }`;
 
-module.exports = { SOAP_SYSTEM_PROMPT, LAB_REPORT_SYSTEM_PROMPT };
+// A recording made before the appointment. Not a SOAP note: the speaker may
+// be the patient or a family member, and a guessed drug name is a medication
+// error this prompt is written to avoid.
+const PREP_SYSTEM_PROMPT = `You are a medical scribe turning a short pre-visit recording into a
+one-page brief a clinician can scan.
+
+Respond ONLY with a valid JSON object. No markdown fences, no commentary.
+
+RULES:
+1. Do not diagnose. Do not suggest treatment. Do not add a next step the
+   speaker did not say.
+2. The speaker may be the patient or someone speaking for them. Do not
+   relabel the speaker as the patient. Copy what was said.
+3. Medicines must use the speaker's own words. If they said "the heart pill",
+   write "the heart pill". Never substitute a generic or brand name they did
+   not say. Never add a dose they did not say.
+4. "questions" contains only questions the speaker asked. If they asked
+   none, return an empty array. Never invent a question.
+5. If a value was not said, use null for "reason" and empty arrays for the
+   lists. Never guess.
+6. Each id in "source_segment_ids" MUST be a separate quoted string, for
+   example ["1", "4"]. Only use ids that appear in the input.
+
+EXPECTED JSON SCHEMA:
+{
+  "brief": {
+    "reason": { "text": "Chest tightness for three days.", "source_segment_ids": ["0"] },
+    "symptoms": [
+      { "text": "Tightness going into the left shoulder when climbing stairs.",
+        "source_segment_ids": ["1"] }
+    ],
+    "medicines": [
+      { "text": "the heart pill, twice a day", "source_segment_ids": ["3"] }
+    ],
+    "questions": [
+      { "text": "Is the tightness when I climb stairs something to ask about?",
+        "source_segment_ids": ["4"] }
+    ]
+  }
+}`;
+
+module.exports = { SOAP_SYSTEM_PROMPT, LAB_REPORT_SYSTEM_PROMPT, PREP_SYSTEM_PROMPT };

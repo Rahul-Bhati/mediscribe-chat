@@ -3,12 +3,13 @@ import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 
 import { colors, radii, spacing, type } from '../theme';
 
-export type PipelineStage = 'transcribing' | 'writing' | 'reading';
+export type PipelineStage = 'transcribing' | 'writing' | 'reading' | 'briefing';
 
 const LABELS: Record<PipelineStage, string> = {
   transcribing: 'Transcribing…',
   writing: 'Writing note…',
   reading: 'Reading the report…',
+  briefing: 'Writing the brief…',
 };
 
 type Props = {

@@ -1,8 +1,9 @@
 const express = require('express');
 const multer = require('multer');
 
+const { describeGroqError } = require('../lib/errors');
 const { transcribe, completeJson } = require('../lib/groq');
-const { normalizeSoapNote, filterSegmentIds, isEmptyNote } = require('../lib/soap');
+const { normalizeSoapNote, filterSegmentIds, isEmptyNote, normalizePatientDocuments } = require('../lib/soap');
 const { SOAP_SYSTEM_PROMPT } = require('../prompts');
 
 const router = express.Router();
@@ -48,6 +49,7 @@ router.post('/process-voice', upload.single('audio'), async (req, res) => {
 
     const note = normalizeSoapNote(parsed);
     const { kept, dropped } = filterSegmentIds(note, segments);
+    const documents = normalizePatientDocuments(parsed, note, segments);
 
     if (isEmptyNote(note)) {
       // The audio and transcription both worked — there was simply no clinical
@@ -71,6 +73,7 @@ router.post('/process-voice', upload.single('audio'), async (req, res) => {
     console.log(
       `[process-voice] ${segments.length} segments, ${attempts} LLM attempt(s), ` +
         `${kept} ids kept / ${dropped} dropped, ` +
+        `${documents.patient_summary.length} summary, ${documents.checklist.length} tasks, ` +
         `stt ${transcribedAt - startedAt}ms, llm ${completedAt - transcribedAt}ms, ` +
         `total ${completedAt - startedAt}ms`
     );
@@ -79,6 +82,8 @@ router.post('/process-voice', upload.single('audio'), async (req, res) => {
       success: true,
       data: {
         soap_note: note.soap_note,
+        patient_summary: documents.patient_summary,
+        checklist: documents.checklist,
         segments,
         meta: {
           llm_attempts: attempts,
@@ -103,40 +108,5 @@ router.post('/process-voice', upload.single('audio'), async (req, res) => {
     });
   }
 });
-
-/**
- * Turns the Groq failures a user can actually cause into something worth
- * reading. Anything else falls through to the generic 500 — a stack trace is
- * not a demo.
- *
- * @returns {string | null} A user-facing message, or null if unrecognised.
- */
-function describeGroqError(error) {
-  const status = error?.status;
-  const message = String(error?.message || '');
-
-  if (status === 429) {
-    return 'The transcription service is rate limited right now. Wait a moment and try again.';
-  }
-  // Measured once in twenty back-to-back runs: the free tier queues the audio
-  // request past the client timeout. Nothing the user did wrong, and trying
-  // again a moment later works.
-  if (/timed out|timeout/i.test(message)) {
-    return 'The transcription service is busy and took too long. Try that recording again.';
-  }
-  if (status === 413 || /too large/i.test(message)) {
-    return 'That recording is too long to process. Try a shorter one.';
-  }
-  if (/too short/i.test(message)) {
-    return 'That recording was too short to hear. Hold the mic a little longer.';
-  }
-  if (status === 401 || status === 403) {
-    return 'The server could not authenticate with the transcription service.';
-  }
-  if (/model_not_found/i.test(message) || /does not exist/i.test(message)) {
-    return 'The configured AI model is unavailable. Check GROQ_TEXT_MODEL in the server .env.';
-  }
-  return null;
-}
 
 module.exports = router;
