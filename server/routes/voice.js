@@ -74,6 +74,7 @@ router.post('/process-voice', upload.single('audio'), async (req, res) => {
       `[process-voice] ${segments.length} segments, ${attempts} LLM attempt(s), ` +
         `${kept} ids kept / ${dropped} dropped, ` +
         `${documents.patient_summary.length} summary, ${documents.checklist.length} tasks, ` +
+        `${documents.warnings.length} warnings, ` +
         `stt ${transcribedAt - startedAt}ms, llm ${completedAt - transcribedAt}ms, ` +
         `total ${completedAt - startedAt}ms`
     );
@@ -84,6 +85,7 @@ router.post('/process-voice', upload.single('audio'), async (req, res) => {
         soap_note: note.soap_note,
         patient_summary: documents.patient_summary,
         checklist: documents.checklist,
+        warnings: documents.warnings,
         segments,
         meta: {
           llm_attempts: attempts,

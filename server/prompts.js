@@ -33,12 +33,13 @@ CRITICAL INSTRUCTIONS:
 7. Each id in "source_segment_ids" MUST be a separate quoted string, for
    example ["1", "4", "7"]. Never merge ids into a single value such as
    ["147"], and never emit them as bare numbers.
-8. Also return "patient_summary" and "checklist" beside "soap_note".
-9. patient_summary is at most 6 bullets in plain English. Restate symptoms
-   and spoken numbers that are not tasks (how long, where it hurts, a blood
-   pressure that was said aloud). Do not restate a medicine, a test, a
-   referral, or a follow-up time. Those belong only in checklist. Do not
-   write "you have" or "you should". You may write "The doctor said this
+8. Also return "patient_summary", "checklist", and "warnings" beside
+   "soap_note".
+9. patient_summary is at most 6 bullets. Restate symptoms and spoken numbers
+   that are not tasks (how long, where it hurts, a blood pressure that was
+   said aloud). Do not restate a medicine, a test, a referral, a follow-up
+   time, or a warning sign. Those belong only in checklist or warnings. Do
+   not write "you have" or "you should". You may write "The doctor said this
    could be angina."
 10. checklist contains only tasks the plan already states. "kind" is exactly
     "medicine", "test", or "follow_up". "text" is the instruction itself,
@@ -51,8 +52,18 @@ CRITICAL INSTRUCTIONS:
     week", "two weeks", and "before that appointment". Do not invent a drug
     name or a time the transcript did not say. If the words give no dose,
     do not add one.
-12. "Come back if it gets worse" is follow_up. If the plan states no
-    medicine, test, or follow-up, return "checklist": [].
+12. A dated return ("in two weeks", "this week", "tomorrow") is follow_up.
+    A conditional watch ("come back if it gets worse", "if the pain starts
+    at rest") is a warning, not a checklist item. If the plan states no
+    medicine, test, or dated follow-up, return "checklist": [].
+13. warnings is at most 4. Copy only a condition the doctor told them to
+    watch for, in the words that were said. Do not add "go to the emergency
+    room", "call 911", or any urgency the transcript did not state. If no
+    warning was stated, return "warnings": [].
+14. Write patient_summary, checklist text, and warnings in the language the
+    patient spoke. If they spoke Hindi or a mix of Hindi and English, use
+    that language. Keep soap_note in English. Do not translate a dose, a
+    drug name, or a number.
 
 EXPECTED JSON SCHEMA:
 {
@@ -83,6 +94,11 @@ EXPECTED JSON SCHEMA:
       "text": "keep carvedilol 6.25 mg twice a day",
       "plan_bullet_index": 0,
       "source_segment_ids": ["11"] }
+  ],
+  "warnings": [
+    { "text": "come back if the pain starts at rest",
+      "plan_bullet_index": 1,
+      "source_segment_ids": ["12"] }
   ]
 }`;
 
@@ -148,6 +164,12 @@ RULES:
    lists. Never guess.
 6. Each id in "source_segment_ids" MUST be a separate quoted string, for
    example ["1", "4"]. Only use ids that appear in the input.
+7. Write every line in the language that was spoken. If the speaker used
+   Hindi or a mix, keep that language. Do not translate into English.
+   Medicines and allergies stay in the speaker's words.
+8. "allergies" lists only allergies the speaker stated. "Allergic to
+   penicillin" stays "allergic to penicillin". Never guess a drug name.
+   If none were stated, return an empty array.
 
 EXPECTED JSON SCHEMA:
 {
@@ -159,6 +181,9 @@ EXPECTED JSON SCHEMA:
     ],
     "medicines": [
       { "text": "the heart pill, twice a day", "source_segment_ids": ["3"] }
+    ],
+    "allergies": [
+      { "text": "allergic to penicillin", "source_segment_ids": ["4"] }
     ],
     "questions": [
       { "text": "Is the tightness when I climb stairs something to ask about?",

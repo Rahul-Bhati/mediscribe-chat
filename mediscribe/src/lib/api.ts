@@ -15,6 +15,7 @@ import {
   type PrepNote,
   type SoapNote,
   type VisitNote,
+  type WarningItem,
 } from '../types';
 
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -158,6 +159,7 @@ function readVisitNote(data: unknown): VisitNote | null {
     segments,
     patient_summary: readCitedLines(record.patient_summary, 6),
     checklist: readChecklist(record.checklist),
+    warnings: readWarnings(record.warnings),
   };
 }
 
@@ -209,6 +211,22 @@ function readChecklist(raw: unknown): ChecklistItem[] {
   return items;
 }
 
+function readWarnings(raw: unknown): WarningItem[] {
+  if (!Array.isArray(raw)) return [];
+  const items: WarningItem[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') continue;
+    const record = entry as Record<string, unknown>;
+    const line = readCitedLine(record);
+    const plan_bullet_index =
+      typeof record.plan_bullet_index === 'number' ? record.plan_bullet_index : -1;
+    if (!line || !Number.isInteger(plan_bullet_index) || plan_bullet_index < 0) continue;
+    items.push({ ...line, plan_bullet_index });
+    if (items.length >= 4) break;
+  }
+  return items;
+}
+
 function readPrepNote(data: unknown): PrepNote | null {
   if (!data || typeof data !== 'object') return null;
   const record = data as Record<string, unknown>;
@@ -219,9 +237,16 @@ function readPrepNote(data: unknown): PrepNote | null {
     reason: readCitedLine(brief.reason),
     symptoms: readCitedLines(brief.symptoms, 6),
     medicines: readCitedLines(brief.medicines, 8),
+    allergies: readCitedLines(brief.allergies, 6),
     questions: readCitedLines(brief.questions, 6),
   };
-  if (!parsed.reason && parsed.symptoms.length === 0 && parsed.medicines.length === 0 && parsed.questions.length === 0) {
+  if (
+    !parsed.reason &&
+    parsed.symptoms.length === 0 &&
+    parsed.medicines.length === 0 &&
+    parsed.allergies.length === 0 &&
+    parsed.questions.length === 0
+  ) {
     return null;
   }
   return { brief: parsed, segments: record.segments };

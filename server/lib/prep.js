@@ -1,5 +1,6 @@
 const SYMPTOM_CAP = 6;
 const MEDICINE_CAP = 8;
+const ALLERGY_CAP = 6;
 const QUESTION_CAP = 6;
 
 const PREP_STOPWORDS = new Set([
@@ -71,7 +72,7 @@ function takeLines(rawList, validIds, segmentsById, cap, faithful) {
 /**
  * @param {unknown} parsed
  * @param {{ id: number, text: string }[]} segments
- * @returns {{ reason: {text: string, source_segment_ids: number[]} | null, symptoms: object[], medicines: object[], questions: object[] }}
+ * @returns {{ reason: {text: string, source_segment_ids: number[]} | null, symptoms: object[], medicines: object[], allergies: object[], questions: object[] }}
  */
 function normalizePrep(parsed, segments) {
   const validIds = new Set(segments.map((segment) => segment.id));
@@ -92,6 +93,7 @@ function normalizePrep(parsed, segments) {
     reason: reasonLines[0] || null,
     symptoms: takeLines(brief.symptoms, validIds, segmentsById, SYMPTOM_CAP, sharesContent),
     medicines: takeLines(brief.medicines, validIds, segmentsById, MEDICINE_CAP, medicineFaithful),
+    allergies: takeLines(brief.allergies, validIds, segmentsById, ALLERGY_CAP, medicineFaithful),
     questions: takeLines(brief.questions, validIds, segmentsById, QUESTION_CAP, sharesContent),
   };
 }
@@ -101,6 +103,7 @@ function isEmptyBrief(brief) {
     !brief.reason &&
     brief.symptoms.length === 0 &&
     brief.medicines.length === 0 &&
+    brief.allergies.length === 0 &&
     brief.questions.length === 0
   );
 }

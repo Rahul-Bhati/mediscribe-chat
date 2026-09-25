@@ -9,6 +9,9 @@ const SHARE_DISCLAIMER = 'Automated summary of what was said, not medical advice
 
 type Props = {
   note: PrepNote;
+  saved: boolean;
+  onKeep: () => void;
+  onDelete: () => void;
 };
 
 function shareText(note: PrepNote): string {
@@ -29,6 +32,9 @@ function shareText(note: PrepNote): string {
     'Medicines:',
     bullets(brief.medicines, 'None stated'),
     '',
+    'Allergies:',
+    bullets(brief.allergies ?? [], 'None stated'),
+    '',
     'Questions:',
     bullets(brief.questions, 'None asked'),
   ].join('\n');
@@ -38,7 +44,7 @@ function shareText(note: PrepNote): string {
  * A pre-visit brief. Tap a line to see the words it came from. Share sends
  * the text only, and only after the person holding the phone taps the button.
  */
-export function PrepBriefBubble({ note }: Props) {
+export function PrepBriefBubble({ note, saved, onKeep, onDelete }: Props) {
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [activeIds, setActiveIds] = useState<number[]>([]);
   const scrollRef = useRef<ScrollView>(null);
@@ -71,6 +77,7 @@ export function PrepBriefBubble({ note }: Props) {
     { title: 'Reason', lines: note.brief.reason ? [note.brief.reason] : [], empty: 'Not stated' },
     { title: 'Symptoms', lines: note.brief.symptoms, empty: 'None stated' },
     { title: 'Medicines', lines: note.brief.medicines, empty: 'None stated' },
+    { title: 'Allergies', lines: note.brief.allergies ?? [], empty: 'None stated' },
     { title: 'Questions', lines: note.brief.questions, empty: 'None asked' },
   ];
 
@@ -115,14 +122,24 @@ export function PrepBriefBubble({ note }: Props) {
         </View>
       ))}
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Share text"
-        onPress={() => void handleShare()}
-        style={({ pressed }) => [styles.share, pressed && styles.bulletPressed]}
-      >
-        <Text style={styles.shareText}>Share text</Text>
-      </Pressable>
+      <View style={styles.actions}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Share text"
+          onPress={() => void handleShare()}
+          style={({ pressed }) => [styles.share, pressed && styles.bulletPressed]}
+        >
+          <Text style={styles.shareText}>Share text</Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={saved ? 'Delete from this phone' : 'Keep on this phone'}
+          onPress={saved ? onDelete : onKeep}
+          style={({ pressed }) => [styles.share, pressed && styles.bulletPressed]}
+        >
+          <Text style={styles.shareText}>{saved ? 'Delete' : 'Keep on this phone'}</Text>
+        </Pressable>
+      </View>
 
       <View style={styles.divider} />
 
@@ -222,9 +239,14 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginTop: spacing.xs,
   },
+  actions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
   share: {
     alignSelf: 'flex-start',
-    marginTop: spacing.sm,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.lg,
     borderRadius: radii.pill,

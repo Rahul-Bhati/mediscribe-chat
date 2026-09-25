@@ -41,6 +41,11 @@ export type ChecklistItem = CitedLine & {
   plan_bullet_index: number;
 };
 
+/** A watch-for line copied from the plan. The bubble prefixes "The doctor said:". */
+export type WarningItem = CitedLine & {
+  plan_bullet_index: number;
+};
+
 export type SoapNote = Record<SoapSection, SoapBullet[]>;
 
 export type TranscriptSegment = {
@@ -55,6 +60,7 @@ export type VisitNote = {
   soap_note: SoapNote;
   patient_summary: CitedLine[];
   checklist: ChecklistItem[];
+  warnings: WarningItem[];
   segments: TranscriptSegment[];
 };
 
@@ -63,6 +69,7 @@ export type PrepBrief = {
   reason: CitedLine | null;
   symptoms: CitedLine[];
   medicines: CitedLine[];
+  allergies: CitedLine[];
   questions: CitedLine[];
 };
 
@@ -108,6 +115,8 @@ export interface ChatMessage extends IMessage {
   attachment?: Attachment;
   labReport?: LabReport;
   isError?: boolean;
+  /** Set once the person taps Keep. The id is the on-device record, not a server id. */
+  savedVisitId?: string;
 }
 
 export const ME = { _id: 1, name: 'You' } as const;

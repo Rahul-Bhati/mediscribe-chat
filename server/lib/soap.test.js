@@ -22,14 +22,14 @@ const carvedilolSegment = {
 test('missing or mistyped extras become empty arrays and leave the note alone', () => {
   const note = noteWithPlan([{ text: 'Follow up.', source_segment_ids: [11] }]);
   const result = normalizePatientDocuments(null, note, [carvedilolSegment]);
-  assert.deepEqual(result, { patient_summary: [], checklist: [] });
+  assert.deepEqual(result, { patient_summary: [], checklist: [], warnings: [] });
 
   const mistyped = normalizePatientDocuments(
     { patient_summary: 'nope', checklist: { kind: 'medicine' } },
     note,
     [carvedilolSegment]
   );
-  assert.deepEqual(mistyped, { patient_summary: [], checklist: [] });
+  assert.deepEqual(mistyped, { patient_summary: [], checklist: [], warnings: [] });
   assert.equal(note.soap_note.plan.length, 1);
 });
 
@@ -311,4 +311,69 @@ test('summary bullets that restate a task or say "you have" are removed', () => 
       'The doctor said this could be angina.',
     ]
   );
+});
+
+test('a warning keeps spoken words and drops an invented emergency instruction', () => {
+  const segment = {
+    id: 12,
+    text: 'Come back if the pain starts at rest.',
+  };
+  const note = noteWithPlan([{ text: 'Watch for rest pain.', source_segment_ids: [12] }]);
+  const result = normalizePatientDocuments(
+    {
+      warnings: [
+        {
+          text: 'come back if the pain starts at rest',
+          plan_bullet_index: 0,
+          source_segment_ids: [12],
+        },
+        {
+          text: 'go to the emergency room if the pain starts at rest',
+          plan_bullet_index: 0,
+          source_segment_ids: [12],
+        },
+      ],
+      patient_summary: [
+        {
+          text: 'Come back if the pain starts at rest.',
+          source_segment_ids: [12],
+        },
+        {
+          text: 'आपकी छाती तीन दिन से कस रही है।',
+          source_segment_ids: [1],
+        },
+      ],
+    },
+    note,
+    [segment, { id: 1, text: 'आपकी छाती तीन दिन से कस रही है।' }]
+  );
+
+  assert.deepEqual(
+    result.warnings.map((item) => item.text),
+    ['come back if the pain starts at rest']
+  );
+  assert.deepEqual(result.patient_summary.map((item) => item.text), [
+    'आपकी छाती तीन दिन से कस रही है।',
+  ]);
+});
+
+test('a warning that cites a segment outside its plan bullet is removed', () => {
+  const note = noteWithPlan([{ text: 'Watch for rest pain.', source_segment_ids: [12] }]);
+  const result = normalizePatientDocuments(
+    {
+      warnings: [
+        {
+          text: 'come back if the pain starts at rest',
+          plan_bullet_index: 0,
+          source_segment_ids: [12, 4],
+        },
+      ],
+    },
+    note,
+    [
+      { id: 12, text: 'Come back if the pain starts at rest.' },
+      { id: 4, text: 'Blood pressure is 112 over 70.' },
+    ]
+  );
+  assert.deepEqual(result.warnings, []);
 });

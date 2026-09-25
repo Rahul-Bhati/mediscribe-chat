@@ -18,6 +18,7 @@ import { useVoiceRecorder, type RecordingResult } from '../hooks/useVoiceRecorde
 import { processDocument, processPrep, processVoice } from '../lib/api';
 import { discardCachedFile } from '../lib/files';
 import { nextMessageId } from '../lib/format';
+import { deleteSavedVisit, loadSavedVisits, saveVisit, type SavedVisit } from '../lib/savedVisits';
 import { pickLabReport, type PickSource } from '../lib/pickLabReport';
 import { colors, spacing } from '../theme';
 import { ASSISTANT, ME, type ChatMessage } from '../types';
@@ -33,10 +34,31 @@ const STAGE_HANDOVER_MS = 2_500;
 
 const WELCOME_MESSAGE: ChatMessage = {
   _id: WELCOME_ID,
-  text: 'Catch up before your next encounter. Record the visit and I will write the note, a plain-language summary, and a to-do list. Every line links back to what was said.',
+  text: 'Catch up before your next encounter. Record the visit and I will write the note, a plain-language summary, a to-do list, and any warning signs the doctor stated. Every line links back to what was said. Nothing is saved unless you tap keep.',
   createdAt: new Date(),
   user: ASSISTANT,
 };
+
+function savedToMessage(item: SavedVisit): ChatMessage {
+  if (item.kind === 'visit') {
+    return {
+      _id: item.id,
+      text: 'Here is the note from that visit.',
+      createdAt: new Date(item.savedAt),
+      user: ASSISTANT,
+      visitNote: item.visitNote,
+      savedVisitId: item.id,
+    };
+  }
+  return {
+    _id: item.id,
+    text: 'Here is the brief to hand over.',
+    createdAt: new Date(item.savedAt),
+    user: ASSISTANT,
+    prepNote: item.prepNote,
+    savedVisitId: item.id,
+  };
+}
 
 export function ChatScreen() {
   const [messages, setMessages] = useState<ChatMessage[]>([WELCOME_MESSAGE]);
@@ -54,6 +76,33 @@ export function ChatScreen() {
     },
     []
   );
+
+  useEffect(() => {
+    let active = true;
+    loadSavedVisits()
+      .then((saved) => {
+        if (!active || saved.length === 0) return;
+        setMessages((previous) => {
+          const known = new Set(previous.map((message) => String(message._id)));
+          const restored = saved
+            .filter((item) => !known.has(item.id))
+            .sort((a, b) => b.savedAt - a.savedAt)
+            .map(savedToMessage);
+          if (restored.length === 0) return previous;
+          const welcomeIndex = previous.findIndex((message) => message._id === WELCOME_ID);
+          if (welcomeIndex === -1) return [...restored, ...previous];
+          const next = [...previous];
+          next.splice(welcomeIndex, 0, ...restored);
+          return next;
+        });
+      })
+      .catch(() => {
+        // A missing or unreadable local file just means there is nothing to restore.
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const append = useCallback((message: ChatMessage) => {
     setMessages((previous) => GiftedChat.append(previous, [message]));
@@ -164,6 +213,47 @@ export function ChatScreen() {
     toggle();
   }, [isRecording, toggle]);
 
+  const keepOnPhone = useCallback(async (message: ChatMessage) => {
+    if (message.savedVisitId) return;
+    const id = `kept-${String(message._id)}-${Date.now()}`;
+    try {
+      if (message.visitNote) {
+        await saveVisit({ id, kind: 'visit', savedAt: Date.now(), visitNote: message.visitNote });
+      } else if (message.prepNote) {
+        await saveVisit({ id, kind: 'prep', savedAt: Date.now(), prepNote: message.prepNote });
+      } else {
+        return;
+      }
+    } catch {
+      Alert.alert('Could not keep this', 'It is still on the screen, but it was not stored on this phone.');
+      return;
+    }
+    setMessages((previous) =>
+      previous.map((item) => (item._id === message._id ? { ...item, savedVisitId: id } : item))
+    );
+  }, []);
+
+  const deleteFromPhone = useCallback((message: ChatMessage) => {
+    if (!message.savedVisitId) return;
+    const savedId = message.savedVisitId;
+    Alert.alert('Delete this visit?', 'It will be removed from this phone.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          void deleteSavedVisit(savedId)
+            .then(() => {
+              setMessages((previous) => previous.filter((item) => item.savedVisitId !== savedId));
+            })
+            .catch(() => {
+              Alert.alert('Could not delete this', 'It is still stored on this phone.');
+            });
+        },
+      },
+    ]);
+  }, []);
+
   const handleSend = useCallback(() => {
     const trimmed = text.trim();
     if (!trimmed) return;
@@ -256,8 +346,22 @@ export function ChatScreen() {
       ) : (
         <>
           <AssistantMessage text={message.text} isError={message.isError} />
-          {message.visitNote ? <SoapNoteBubble note={message.visitNote} /> : null}
-          {message.prepNote ? <PrepBriefBubble note={message.prepNote} /> : null}
+          {message.visitNote ? (
+            <SoapNoteBubble
+              note={message.visitNote}
+              saved={Boolean(message.savedVisitId)}
+              onKeep={() => void keepOnPhone(message)}
+              onDelete={() => deleteFromPhone(message)}
+            />
+          ) : null}
+          {message.prepNote ? (
+            <PrepBriefBubble
+              note={message.prepNote}
+              saved={Boolean(message.savedVisitId)}
+              onKeep={() => void keepOnPhone(message)}
+              onDelete={() => deleteFromPhone(message)}
+            />
+          ) : null}
           {message.labReport ? <LabReportBubble report={message.labReport} /> : null}
           {message._id === WELCOME_ID && !isRecording ? (
             <SuggestionPills title="Try this" suggestions={suggestions} />
@@ -267,7 +371,7 @@ export function ChatScreen() {
 
       return <View style={styles.messageRow}>{content}</View>;
     },
-    [isRecording, suggestions]
+    [deleteFromPhone, isRecording, keepOnPhone, suggestions]
   );
 
   return (

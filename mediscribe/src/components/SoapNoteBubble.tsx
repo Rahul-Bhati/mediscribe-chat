@@ -1,18 +1,42 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 
 import { colors, radii, spacing, type } from '../theme';
-import { SECTION_LABELS, SOAP_SECTIONS, type VisitNote } from '../types';
+import { SECTION_LABELS, SOAP_SECTIONS, type CitedLine, type VisitNote } from '../types';
 
 /**
  * Bounded so the transcript scrolls on its own rather than pushing the note
  * off screen. Tall enough to show roughly six lines of context around a hit.
  */
 const TRANSCRIPT_MAX_HEIGHT = 260;
+const SHARE_DISCLAIMER = 'Automated summary of what was said, not medical advice.';
 
 type Props = {
   note: VisitNote;
+  saved: boolean;
+  onKeep: () => void;
+  onDelete: () => void;
 };
+
+function linesOrEmpty(lines: CitedLine[], empty: string, prefix = ''): string {
+  if (lines.length === 0) return `- ${empty}`;
+  return lines.map((line) => `- ${prefix}${line.text}`).join('\n');
+}
+
+function sharePatientText(note: VisitNote): string {
+  return [
+    SHARE_DISCLAIMER,
+    '',
+    'In plain English',
+    linesOrEmpty(note.patient_summary ?? [], 'No plain-language summary could be written.'),
+    '',
+    'To do',
+    linesOrEmpty(note.checklist ?? [], 'No medicine, test, or follow-up was stated.', 'The doctor said: '),
+    '',
+    'If this happens',
+    linesOrEmpty(note.warnings ?? [], 'No warning signs were stated.', 'The doctor said: '),
+  ].join('\n');
+}
 
 /**
  * The generated note, followed by the transcript it was drawn from.
@@ -22,7 +46,7 @@ type Props = {
  * clinician will not sign a note they cannot audit, so every line has to point
  * back at the words behind it.
  */
-export function SoapNoteBubble({ note }: Props) {
+export function SoapNoteBubble({ note, saved, onKeep, onDelete }: Props) {
   // One source of truth. The selected bullet's key drives both its own styling
   // and which segments light up, so the two can never disagree.
   const [activeKey, setActiveKey] = useState<string | null>(null);
@@ -35,6 +59,15 @@ export function SoapNoteBubble({ note }: Props) {
   const sections = SOAP_SECTIONS.filter((section) => note.soap_note[section].length > 0);
   const summary = note.patient_summary ?? [];
   const checklist = note.checklist ?? [];
+  const warnings = note.warnings ?? [];
+
+  const handleShare = useCallback(async () => {
+    try {
+      await Share.share({ message: sharePatientText(note) });
+    } catch {
+      Alert.alert('Share failed', "The share sheet didn't open. The summary is still on this screen.");
+    }
+  }, [note]);
 
   const handleBulletPress = useCallback(
     (key: string, ids: number[]) => {
@@ -141,6 +174,46 @@ export function SoapNoteBubble({ note }: Props) {
         ) : (
           <Text style={styles.emptyLine}>No medicine, test, or follow-up was stated.</Text>
         )}
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionLabel}>IF THIS HAPPENS</Text>
+        {warnings.length > 0 ? (
+          warnings.map((item, index) => {
+            const key = `warn-${index}`;
+            return (
+              <EvidenceLine
+                key={key}
+                active={activeKey === key}
+                text={item.text}
+                prefix="The doctor said: "
+                ids={item.source_segment_ids}
+                onPress={() => handleBulletPress(key, item.source_segment_ids)}
+              />
+            );
+          })
+        ) : (
+          <Text style={styles.emptyLine}>No warning signs were stated.</Text>
+        )}
+      </View>
+
+      <View style={styles.actions}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Share text"
+          onPress={() => void handleShare()}
+          style={({ pressed }) => [styles.action, pressed && styles.bulletPressed]}
+        >
+          <Text style={styles.actionText}>Share text</Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={saved ? 'Delete from this phone' : 'Keep on this phone'}
+          onPress={saved ? onDelete : onKeep}
+          style={({ pressed }) => [styles.action, pressed && styles.bulletPressed]}
+        >
+          <Text style={styles.actionText}>{saved ? 'Delete' : 'Keep on this phone'}</Text>
+        </Pressable>
       </View>
 
       <View style={styles.divider} />
@@ -268,6 +341,25 @@ const styles = StyleSheet.create({
     ...type.body,
     color: colors.textMuted,
     marginTop: spacing.xs,
+  },
+  actions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  action: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radii.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  actionText: {
+    ...type.small,
+    fontSize: 13,
+    color: colors.text,
   },
   evidence: {
     ...type.small,

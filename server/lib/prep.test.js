@@ -8,6 +8,7 @@ const segments = [
   { id: 1, text: 'The tightness goes into my left shoulder when I climb stairs.' },
   { id: 2, text: 'I take the heart pill twice a day.' },
   { id: 3, text: 'My daughter is telling you this because I forget the details.' },
+  { id: 4, text: 'I am allergic to penicillin.' },
 ];
 
 test('an invented question and a renamed medicine are dropped', () => {
@@ -99,4 +100,28 @@ test('lists are capped', () => {
   );
   assert.equal(brief.symptoms.length, 6);
   assert.equal(brief.medicines.length, 8);
+  assert.deepEqual(brief.allergies, []);
+});
+
+test('a guessed allergy is dropped and a spoken one is kept', () => {
+  const brief = normalizePrep(
+    {
+      brief: {
+        reason: null,
+        symptoms: [],
+        medicines: [],
+        allergies: [
+          { text: 'allergic to carvedilol', source_segment_ids: [4] },
+          { text: 'allergic to penicillin', source_segment_ids: [4] },
+        ],
+        questions: [],
+      },
+    },
+    segments
+  );
+  assert.deepEqual(
+    brief.allergies.map((item) => item.text),
+    ['allergic to penicillin']
+  );
+  assert.equal(isEmptyBrief(brief), false);
 });

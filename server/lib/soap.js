@@ -88,6 +88,7 @@ function isEmptyNote(note) {
 
 const SUMMARY_CAP = 6;
 const CHECKLIST_CAP = 8;
+const WARNING_CAP = 4;
 const CHECKLIST_KINDS = new Set(['medicine', 'test', 'follow_up']);
 
 const TASK_STOPWORDS = new Set([
@@ -204,6 +205,29 @@ function checklistIdentity(item, segmentText) {
   return `${item.kind}:${item.plan_bullet_index}:${tokens}`;
 }
 
+/**
+ * A warning may only repeat words that were spoken. "emergency room" cited
+ * against "come back if the pain starts at rest" is dropped.
+ */
+function warningFaithful(itemText, segmentText) {
+  const words = contentTokens(itemText);
+  if (words.length === 0) return false;
+  const segment = segmentText.toLowerCase();
+  if (!words.every((word) => segment.includes(word))) return false;
+  return digitTokens(itemText).every((digit) => segmentText.includes(digit));
+}
+
+function summaryRestatesWarning(text, warnings) {
+  const lower = text.toLowerCase();
+  const summaryTokens = new Set(contentTokens(text));
+  for (const warning of warnings) {
+    if (lower.includes(warning.text.toLowerCase())) return true;
+    const shared = contentTokens(warning.text).filter((token) => summaryTokens.has(token));
+    if (shared.length >= 3) return true;
+  }
+  return false;
+}
+
 function summaryLeaksTask(text, checklist) {
   if (/\byou should\b|\byou have\b/i.test(text)) return true;
   const lower = text.toLowerCase();
@@ -289,11 +313,43 @@ function normalizePatientDocuments(parsed, note, segments) {
     if (checklist.length >= CHECKLIST_CAP) break;
   }
 
+  const warnings = [];
+  const seenWarnings = new Set();
+  const rawWarnings = Array.isArray(source.warnings) ? source.warnings : [];
+  for (const raw of rawWarnings) {
+    if (!raw || typeof raw !== 'object' || typeof raw.text !== 'string') continue;
+
+    const text = stripDoctorPrefix(raw.text);
+    if (!text) continue;
+
+    const index = typeof raw.plan_bullet_index === 'string'
+      ? Number(raw.plan_bullet_index)
+      : raw.plan_bullet_index;
+    if (!Number.isInteger(index) || index < 0 || index >= plan.length) continue;
+
+    const ids = coerceIdList(raw.source_segment_ids, validIds);
+    if (ids.length === 0) continue;
+    const planIds = new Set(plan[index].source_segment_ids);
+    if (ids.some((id) => !planIds.has(id))) continue;
+
+    const segmentText = citedText(ids, segmentsById);
+    if (!warningFaithful(text, segmentText)) continue;
+
+    const key = contentTokens(text)
+      .filter((token) => segmentText.toLowerCase().includes(token))
+      .sort()
+      .join('|');
+    if (!key || seenWarnings.has(key)) continue;
+    seenWarnings.add(key);
+    warnings.push({ text, plan_bullet_index: index, source_segment_ids: ids });
+    if (warnings.length >= WARNING_CAP) break;
+  }
+
   const patient_summary = summary
-    .filter((item) => !summaryLeaksTask(item.text, checklist))
+    .filter((item) => !summaryLeaksTask(item.text, checklist) && !summaryRestatesWarning(item.text, warnings))
     .slice(0, SUMMARY_CAP);
 
-  return { patient_summary, checklist };
+  return { patient_summary, checklist, warnings };
 }
 
 module.exports = {

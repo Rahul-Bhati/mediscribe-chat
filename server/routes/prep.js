@@ -47,7 +47,8 @@ router.post('/process-prep', upload.single('audio'), async (req, res) => {
     console.log(
       `[process-prep] ${segments.length} segments, ${attempts} LLM attempt(s), ` +
         `reason ${brief.reason ? 1 : 0}, symptoms ${brief.symptoms.length}, ` +
-        `medicines ${brief.medicines.length}, questions ${brief.questions.length}, ` +
+        `medicines ${brief.medicines.length}, allergies ${brief.allergies.length}, ` +
+        `questions ${brief.questions.length}, ` +
         `stt ${transcribedAt - startedAt}ms, llm ${completedAt - transcribedAt}ms, ` +
         `total ${completedAt - startedAt}ms`
     );
